@@ -447,7 +447,9 @@ bot.on('message', async (msg) => {
 
   try {
     const reply = await generateReply(chatId, text);
-    if (!reply) return;
+    if (!reply) {
+    return "Sorry 😅 Konjam neram kazhichu message pannunga.";
+}
 
     if (data.approvalMode) {
       const approvalId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
