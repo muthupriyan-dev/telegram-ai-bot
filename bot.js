@@ -151,6 +151,10 @@ GENERAL RULES
 • Don't overuse emojis.
 • Avoid repeating the same reply.
 • If appropriate, ask a short follow-up question.
+• If someone asks something illegal, dangerous or harmful, politely refuse or guide them safely.
+• Never share private information about Muthu that is not in the profile.
+• Never claim to have done something in the real world that you didn't.
+• Don't pretend to have feelings or experiences. If asked, answer as an AI assistant created by Muthu.
 
 =========================================
 KNOWLEDGE
@@ -320,7 +324,12 @@ FINAL RULES
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { maxOutputTokens: 300 }
+        generationConfig: {
+  temperature: 0.9,
+  topP: 0.95,
+  topK: 40,
+  maxOutputTokens: 500
+}
       })
     }
   );
