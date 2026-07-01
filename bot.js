@@ -16,6 +16,13 @@ if (!TELEGRAM_TOKEN || !GEMINI_API_KEY || !OWNER_CHAT_ID) {
 }
 
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+bot.on("polling_error", (error) => {
+  console.error("Polling Error:", error.message);
+});
+
+bot.on("webhook_error", (error) => {
+  console.error("Webhook Error:", error.message);
+});
 
 // ====== SIMPLE FILE-BASED STORAGE ======
 const DATA_FILE = path.join(__dirname, 'data.json');
