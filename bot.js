@@ -344,15 +344,30 @@ FINAL RULES
 
 // ====== OWNER COMMANDS (only work in owner's own chat with the bot) ======
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, `Hi! Naan unga AI clone bot. Commands:\n
-/away on - Bot active-ah reply pannum (neenga busy irukum bothu)
-/away off - Bot reply pannadhu, neenga manually reply pannalam
-/approval on - Every reply-um unga approval ku varum (safe mode)
-/approval off - Bot direct-ah reply pannum
-/setstyle <text> - Unga style example kudunga (2-3 sample messages)
-/setrule <chatId> <tone> - Specific contact ku tone set pannunga
-/summary - Today stats
-/status - Current settings`);
+  bot.onText(/\/start/, (msg) => {
+  if (isOwner(msg.chat.id)) {
+    bot.sendMessage(msg.chat.id, `👑 Welcome Muthu!
+
+Owner Commands:
+
+/away on - Bot active-ah reply pannum
+/away off - Bot stop replying
+
+/approval on - Approval mode ON
+/approval off - Auto reply mode
+
+/setstyle <text> - Update your texting style
+/setrule <chatId> <tone> - Set contact tone
+
+/summary - Today's summary
+/status - Bot status`);
+  } else {
+    bot.sendMessage(msg.chat.id, `👋 Vanakkam!
+
+Naa Muthu Assistant 🤖
+
+Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
+  }
 });
 
 bot.onText(/\/away (on|off)/, (msg, match) => {
