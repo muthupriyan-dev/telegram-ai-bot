@@ -325,11 +325,11 @@ FINAL RULES
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
         generationConfig: {
-  temperature: 0.9,
-  topP: 0.95,
-  topK: 40,
-  maxOutputTokens: 500
-}
+          temperature: 0.9,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 500
+        }
       })
     }
   );
@@ -343,8 +343,9 @@ FINAL RULES
 }
 
 // ====== OWNER COMMANDS (only work in owner's own chat with the bot) ======
+// FIX: removed the duplicate nested bot.onText(/\/start/) that was
+// re-registering a new listener every time /start was called.
 bot.onText(/\/start/, (msg) => {
-  bot.onText(/\/start/, (msg) => {
   if (isOwner(msg.chat.id)) {
     bot.sendMessage(msg.chat.id, `👑 Welcome Muthu!
 
@@ -462,9 +463,13 @@ bot.on('message', async (msg) => {
 
   try {
     const reply = await generateReply(chatId, text);
+
+    // FIX: previously this did `return "Sorry..."` which never actually
+    // sent a message to the user (the string just vanished). Now we
+    // actually send it via bot.sendMessage.
     if (!reply) {
-    return "Sorry 😅 Konjam neram kazhichu message pannunga.";
-}
+      return bot.sendMessage(chatId, "Sorry 😅 Konjam neram kazhichu message pannunga.");
+    }
 
     if (data.approvalMode) {
       const approvalId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
