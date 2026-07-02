@@ -1,0 +1,17 @@
+{
+  "name": "muthu-telegram-ai-bot",
+  "version": "1.0.0",
+  "description": "Telegram AI clone bot with owner approval workflow, emergency filter, and a multi-provider AI fallback chain (Gemini -> Groq -> OpenRouter -> Cohere -> HuggingFace)",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
