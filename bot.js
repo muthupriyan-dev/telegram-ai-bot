@@ -1,4 +1,16 @@
 require('dotenv').config();
+
+// ====== CRASH SAFETY NET ======
+// Without these, any unhandled error (Telegram API blip, blocked chat, etc.)
+// kills the whole process, and Render won't auto-restart it —
+// the bot just stays dead until a manual redeploy.
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️  Unhandled rejection (bot kept alive):', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('⚠️  Uncaught exception (bot kept alive):', err);
+});
+
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const { generateWithFallback } = require('./aiFallback');
@@ -379,12 +391,17 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
     const id = match[1];
     const pending = data.pendingApprovals[id];
     if (!pending) return bot.sendMessage(msg.chat.id, 'Draft not found or already handled.');
-    await bot.sendMessage(pending.chatId, pending.draftReply);
-    pushHistory(pending.chatId, 'me', pending.draftReply);
-    bumpStat(pending.chatId);
-    delete data.pendingApprovals[id];
-    saveData(data);
-    bot.sendMessage(msg.chat.id, 'Sent ✅');
+    try {
+      await bot.sendMessage(pending.chatId, pending.draftReply);
+      pushHistory(pending.chatId, 'me', pending.draftReply);
+      bumpStat(pending.chatId);
+      delete data.pendingApprovals[id];
+      saveData(data);
+      bot.sendMessage(msg.chat.id, 'Sent ✅');
+    } catch (err) {
+      console.error('Error sending approved reply:', err.message);
+      bot.sendMessage(msg.chat.id, '⚠️ Failed to send — maybe the user blocked the bot.');
+    }
   });
 
   bot.onText(/\/reject (\S+)/, (msg, match) => {
