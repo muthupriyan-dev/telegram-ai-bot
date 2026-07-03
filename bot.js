@@ -12,6 +12,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const TelegramBot = require('node-telegram-bot-api');
+const cron = require('node-cron');
 const express = require('express');
 const { generateWithFallback } = require('./aiFallback');
 const { loadData, saveData } = require('./storage');
@@ -67,6 +68,15 @@ function pushHistory(chatId, role, content) {
 function containsEmergency(text) {
   const lower = text.toLowerCase();
   return EMERGENCY_KEYWORDS.some(k => lower.includes(k));
+}
+
+function buildSummaryText(day) {
+  const stats = data.dailyStats[day] || { repliesSent: 0, perContact: {} };
+  let text = `📊 Daily Summary (${day})\nTotal replies: ${stats.repliesSent}\n\n`;
+  for (const [cid, count] of Object.entries(stats.perContact)) {
+    text += `Chat ${cid}: ${count} replies\n`;
+  }
+  return stats.repliesSent ? text : `📊 Daily Summary (${day})\nNo activity today.`;
 }
 
 // ====== AI REPLY GENERATION (multi-provider fallback chain) ======
@@ -371,13 +381,7 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
 
   bot.onText(/\/summary/, (msg) => {
     if (!isOwner(msg.chat.id)) return;
-    const day = todayKey();
-    const stats = data.dailyStats[day] || { repliesSent: 0, perContact: {} };
-    let text = `📊 Today's Summary (${day})\nTotal replies: ${stats.repliesSent}\n\n`;
-    for (const [cid, count] of Object.entries(stats.perContact)) {
-      text += `Chat ${cid}: ${count} replies\n`;
-    }
-    bot.sendMessage(msg.chat.id, text || 'No activity today.');
+    bot.sendMessage(msg.chat.id, buildSummaryText(todayKey()));
   });
 
   bot.onText(/\/status/, (msg) => {
@@ -460,6 +464,11 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
       console.error('Error generating/sending reply:', err);
     }
   });
+
+  // ====== SCHEDULED DAILY SUMMARY (9:00 PM IST every day) ======
+  cron.schedule('0 21 * * *', () => {
+    bot.sendMessage(OWNER_CHAT_ID, buildSummaryText(todayKey()));
+  }, { timezone: 'Asia/Kolkata' });
 
   // ====== KEEP-ALIVE WEB SERVER (Render needs an open port) ======
   const app = express();
