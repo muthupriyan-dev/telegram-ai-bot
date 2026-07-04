@@ -1,6 +1,12 @@
 // storage.js
 // Firestore-backed storage — replaces the old data.json file.
 // Data survives restarts, redeploys, and sleep/wake cycles on Render.
+//
+// CHANGES: added `contacts` (Telegram first name + long-term facts per chat,
+// keyed by chatId — this covers both regular contacts AND the owner's own
+// chat, since the owner's private chat with the bot is just another chatId)
+// so the bot can (a) address people by their real name and (b) remember
+// things like "my favorite color is black" forever, not just for 10 messages.
 
 const admin = require('firebase-admin');
 
@@ -15,6 +21,7 @@ const DEFAULT_DATA = {
   history: {},
   dailyStats: {},
   emergencyNotified: {},
+  contacts: {}, // chatId -> { firstName: string, facts: { key: value } }
 };
 
 function initFirebase() {
@@ -53,7 +60,9 @@ async function loadData() {
     return { ...DEFAULT_DATA };
   }
 
-  // Merge with defaults so newly-added fields don't come back undefined
+  // Merge with defaults so newly-added fields (like `contacts`) don't come
+  // back undefined for accounts that already had a Firestore doc before
+  // this update.
   return { ...DEFAULT_DATA, ...snap.data() };
 }
 
