@@ -35,8 +35,8 @@ let data; // populated from Firestore in main()
 
 // ====== HELPERS ======
 const EMERGENCY_KEYWORDS = [
-  'emergency', 'accident', 'help me', 'urgent', 'hospital',
-  'seri illa', 'save pannu', 'danger', 'police', 'ambulance'
+  'emergency', 'accident',  'urgent', 'hospital',
+    'danger', 'police', 'ambulance'
 ];
 
 function isOwner(chatId) {
