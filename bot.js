@@ -15,6 +15,7 @@ const { generateWithFallback } = require('./aiFallback');
 const { loadData, saveData } = require('./storage');
 const { getNow, isDateTimeQuestion, answerDateTimeQuestion } = require('./utils/dateTime');
 const { tryCalculate } = require('./utils/mathEngine');
+const { needsSearch, webSearch } = require('./utils/webSearch');
 
 // ====== CONFIG ======
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
@@ -27,6 +28,9 @@ if (!TELEGRAM_TOKEN || !OWNER_CHAT_ID) {
 }
 if (!process.env.GEMINI_API_KEY) {
   console.warn('⚠️  GEMINI_API_KEY not set — fallback chain will skip straight to other providers.');
+}
+if (!process.env.TAVILY_API_KEY) {
+  console.warn('⚠️  TAVILY_API_KEY not set — bot will rely on training data only for current-events questions (may be stale).');
 }
 
 let data; // populated from Firestore in main()
@@ -50,8 +54,6 @@ function bumpStat(chatId) {
   saveData(data);
 }
 
-// Keep last 20 raw turns (was 10) — gives more room before facts scroll off,
-// while long-term facts (below) cover anything that would exceed even this.
 const HISTORY_LIMIT = 20;
 
 function pushHistory(chatId, role, content) {
@@ -78,8 +80,6 @@ function buildSummaryText(day) {
 }
 
 // ====== CONTACT IDENTITY + LONG-TERM FACTS ======
-// Fixes: "what's my name" had no real signal to answer from. Telegram gives
-// us the real first name on every message — we just weren't capturing it.
 function ensureContact(chatId, firstName) {
   if (!data.contacts[chatId]) {
     data.contacts[chatId] = { firstName, facts: {} };
@@ -89,8 +89,6 @@ function ensureContact(chatId, firstName) {
   saveData(data);
 }
 
-// Lightweight regex fact extraction — no extra LLM call, catches the common
-// "my X is Y" pattern from the bug report ("my favorite color is black").
 const FACT_PATTERNS = [
   { key: 'favorite_color', regex: /my favou?rite colou?r is ([a-zA-Z]+)/i },
   { key: 'favorite_food', regex: /my favou?rite food is ([\w\s]+?)(?:[.!]|$)/i },
@@ -113,12 +111,6 @@ function extractAndStoreFacts(chatId, text) {
 }
 
 // ====== HISTORY -> GEMINI CONTENTS (with alternation fix) ======
-// BUG THIS FIXES: when `away` was off, incoming messages were still pushed
-// to history as role 'them' with no matching 'me' reply, so two 'user' turns
-// could land back-to-back. Gemini's API requires strict user/model
-// alternation and rejects that — silently pushing every request down to
-// your other providers. This merges consecutive same-role turns so the
-// contents array is always valid, no matter what happened in between.
 function historyToContents(history) {
   const merged = [];
   for (const h of history) {
@@ -130,13 +122,12 @@ function historyToContents(history) {
       merged.push({ role, parts: [{ text: h.content }] });
     }
   }
-  // Gemini requires the conversation to start with 'user'
   while (merged.length && merged[0].role !== 'user') merged.shift();
   return merged;
 }
 
 // ====== AI REPLY GENERATION (multi-provider fallback chain) ======
-async function generateReply(chatId, incomingMessage, { directOwnerChat = false } = {}) {
+async function generateReply(chatId, incomingMessage, { directOwnerChat = false, searchContext = null } = {}) {
   const history = data.history[chatId] || [];
   const contactRule = data.contactRules[chatId] || 'Normal friendly tone.';
   const contact = data.contacts[chatId] || { firstName: 'friend', facts: {} };
@@ -158,6 +149,12 @@ REAL-WORLD DATE & TIME (always trust this — never say a different day)
 
 Right now it is: ${humanReadable} (IST). Today is ${day}.
 
+${searchContext ? `=========================================
+LIVE WEB SEARCH RESULTS (just fetched right now — ALWAYS trust this over your own training data, which may be outdated. If this conflicts with what you "remember", the info below is correct and more recent.)
+=========================================
+
+${searchContext}
+` : ''}
 =========================================
 WHO YOU'RE TALKING TO RIGHT NOW
 =========================================
@@ -237,6 +234,7 @@ KNOWLEDGE
 • Answer questions on any topic accurately and simply, with examples where useful.
 • If you are unsure, honestly say you don't know. Never invent facts or misleading information.
 • Do NOT attempt to do arithmetic yourself if the exact answer to a calculation is provided to you in the user's message context — trust and restate it, don't recompute it differently.
+• For anything current/real-world (who holds a position, latest events, prices, scores), always defer to the LIVE WEB SEARCH RESULTS section above if it's present — never contradict it with older training knowledge.
 
 =========================================
 PERSONAL QUESTIONS ABOUT MUTHU
@@ -374,7 +372,7 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
 
   bot.onText(/\/status/, (msg) => {
     if (!isOwner(msg.chat.id)) return;
-    bot.sendMessage(msg.chat.id, `Away: ${data.away}\nApproval mode: ${data.approvalMode}\nStyle set: ${data.styleProfile ? 'Yes' : 'No'}`);
+    bot.sendMessage(msg.chat.id, `Away: ${data.away}\nApproval mode: ${data.approvalMode}\nStyle set: ${data.styleProfile ? 'Yes' : 'No'}\nWeb search: ${process.env.TAVILY_API_KEY ? 'Enabled' : 'Disabled (no TAVILY_API_KEY)'}`);
   });
 
   bot.onText(/\/approve (\S+)/, async (msg, match) => {
@@ -418,7 +416,7 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
     // --- Deterministic short-circuits: date/time and math never touch the LLM ---
     if (isDateTimeQuestion(text)) {
       const reply = answerDateTimeQuestion(text);
-      pushHistory(chatId, isOwner(chatId) ? 'them' : 'them', text);
+      pushHistory(chatId, 'them', text);
       pushHistory(chatId, 'me', reply);
       return bot.sendMessage(chatId, reply);
     }
@@ -430,13 +428,21 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
       return bot.sendMessage(chatId, reply);
     }
 
+    // --- Live web search for current-events / factual questions ---
+    // FIX: bot was answering with stale training-data facts (e.g. old CM
+    // name) with no way to know about events after its training cutoff.
+    // Now it fetches real, current info first and feeds it to the model as
+    // ground truth before generating a reply.
+    let searchContext = null;
+    if (needsSearch(text)) {
+      searchContext = await webSearch(text);
+    }
+
     // --- Owner talking directly to the bot (not a contact) ---
-    // FIX: previously any non-command message from the owner was silently
-    // ignored. Now Muthu can just chat with his own assistant normally.
     if (isOwner(chatId)) {
       pushHistory(chatId, 'them', text);
       try {
-        const reply = await generateReply(chatId, text, { directOwnerChat: true });
+        const reply = await generateReply(chatId, text, { directOwnerChat: true, searchContext });
         if (!reply) return bot.sendMessage(chatId, "Sorry, ellame AI backends down 😅 try pannunga konjam neram kazhichi.");
         pushHistory(chatId, 'me', reply);
         bot.sendMessage(chatId, reply);
@@ -462,7 +468,7 @@ Enna help venumo kelunga. Mudinja alavukku help panren 😊`);
     if (!data.away) return;
 
     try {
-      const reply = await generateReply(chatId, text);
+      const reply = await generateReply(chatId, text, { searchContext });
       if (!reply) return bot.sendMessage(chatId, "Sorry 😅 Konjam neram kazhichu message pannunga.");
 
       if (data.approvalMode) {
