@@ -1,69 +1,103 @@
-# Muthu Telegram AI Bot — Firestore Edition
+<div align="center">
 
-Same bot as before (owner commands, approval workflow, emergency filter,
-AI fallback chain) but storage moved from `data.json` (a file on Render's
-disk, which gets wiped on every restart/redeploy/sleep) to **Firebase
-Firestore**, so your settings — `away`, `approvalMode`, pending approvals,
-history, stats — survive restarts. No more surprise "approval mode is back
-on" after the bot sleeps.
+# 🤖 muthu-telegram-ai-bot
 
-## What changed
-- New file: `storage.js` — loads/saves the whole state as one Firestore
-  document (`telegramBot/state`) using `firebase-admin`.
-- `bot.js` — `fs`-based `loadData()`/`saveData()` replaced with the
-  Firestore versions. Everything else (commands, approval flow, emergency
-  filter, AI fallback chain) is unchanged.
-- `package.json` — added `firebase-admin` dependency.
+**An AI-powered Telegram assistant that replies as Muthu when he's away — with memory, live search, and a multi-provider fallback chain.**
 
-## Step 1 — Create a Firebase project (skip if you already have one)
-1. Go to **console.firebase.google.com**
-2. "Add project" → give it a name → create
-3. In the project, go to **Build → Firestore Database** → Create database
-   → choose a region → start in **production mode** (fine either way)
+</div>
 
-## Step 2 — Get the service account key
-1. In Firebase Console: click the gear icon (top left) → **Project settings**
-2. Go to the **Service accounts** tab
-3. Click **Generate new private key** → confirm
-4. A `.json` file downloads to your phone — this is your service account key
+---
 
-## Step 3 — Add it to Render as an environment variable
-1. Open the downloaded JSON file (any text/file viewer app can open it,
-   or open it in your phone's browser via the Files app)
-2. **Select all the text and copy it** — it's one big JSON object
-3. Go to Render → your service → **Environment** tab
-4. Add a new variable:
-   - Key: `FIREBASE_SERVICE_ACCOUNT_JSON`
-   - Value: paste the **entire JSON content** you copied (starts with
-     `{"type": "service_account", ...}` and ends with `}`)
-5. Save
+## ✨ Features
 
-## Step 4 — Push the updated code to GitHub
-Upload/replace these files in your repo:
-- `bot.js`
-- `storage.js` (new)
-- `aiFallback.js` (unchanged from before)
-- `package.json`
+| | |
+|---|---|
+| 🔗 **Multi-provider AI fallback** | Gemini 2.5 Flash → Flash Lite → 2.0 Flash → Groq → OpenRouter → Cohere → HuggingFace. Auto-switches if one fails or is rate-limited. |
+| 🕐 **Accurate date & time** | Real IST clock, injected fresh every message — never hardcoded. |
+| 🧮 **Accurate math** | Arithmetic detected and computed with a real evaluator, not left to the LLM. |
+| 🌐 **Live web search** | Current-events questions trigger a real-time search (Tavily) so answers aren't stuck on stale training data. |
+| 💬 **Conversation memory** | Last 20 messages per chat kept as context for natural follow-ups. |
+| 🧠 **Long-term facts** | Things people mention about themselves get remembered permanently, per contact. |
+| 👤 **Contact identity** | Uses each person's real Telegram first name automatically. |
+| ✅ **Owner approval mode** | Drafts can go to Muthu for approval first, or auto-send. |
+| 🚨 **Emergency filter** | Urgent keywords skip auto-reply and alert Muthu directly instead. |
+| 🗣️ **Direct owner chat** | Muthu can message the bot normally and get a direct assistant reply. |
+| 📊 **Daily summary** | Automatic 9 PM IST activity report sent to the owner. |
+| 💾 **Persistent storage** | Everything lives in Firestore — survives restarts and redeploys. |
 
-## Step 5 — Redeploy on Render
-Manual Deploy → Deploy latest commit. Check the logs for:
+---
+
+## 📁 Project structure
+
 ```
-⏳ Loading data from Firestore...
-✅ Data loaded from Firestore.
-Bot started...
+bot.js                   Main bot logic, message handling, commands
+aiFallback.js            Multi-provider AI fallback chain
+storage.js               Firestore load/save
+utils/
+ ├─ dateTime.js          Real-time date/time helper
+ ├─ mathEngine.js        Safe arithmetic evaluator
+ └─ webSearch.js         Tavily-based live search for current facts
 ```
 
-## After this
-- Change `/approval off`, `/away on`, etc. as usual — every change is
-  saved straight to Firestore.
-- Bot restarts, redeploys, or sleep/wake cycles on Render no longer
-  reset your settings.
-- You can also inspect/edit the data manually anytime in the Firebase
-  Console → Firestore Database → `telegramBot` → `state` document.
+---
 
-## Notes
-- Keep the downloaded service account JSON private — don't commit it to
-  GitHub, only paste its contents into Render's Environment tab.
-- If you ever need to reset everything, just delete the `telegramBot/state`
-  document in Firestore Console — the bot recreates it with defaults on
-  next restart.
+## 🔑 Environment variables
+
+Set these under **Render → Environment**:
+
+| Variable | Required | Purpose |
+|---|:---:|---|
+| `TELEGRAM_TOKEN` | ✅ | Bot token from @BotFather |
+| `OWNER_CHAT_ID` | ✅ | Muthu's own Telegram chat ID |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | ✅ | Firebase service account JSON (as a string) |
+| `GEMINI_API_KEY` | recommended | Primary AI provider |
+| `GROQ_API_KEY` | optional | Fallback provider |
+| `OPENROUTER_API_KEY` | optional | Fallback provider |
+| `COHERE_API_KEY` | optional | Fallback provider |
+| `HF_API_KEY` | optional | Fallback provider (HuggingFace) |
+| `TAVILY_API_KEY` | recommended | Live search for current facts — free tier: 1,000/month. Without it, bot still works but may give outdated answers on recent events. |
+| `PORT` | — | Set automatically by Render |
+
+---
+
+## 🕹️ Owner commands
+
+*(only work from `OWNER_CHAT_ID`)*
+
+```
+/away on | off             Turn auto-reply to contacts on/off
+/approval on | off         Require approval before sending, or auto-send
+/setstyle <text>           Update the texting style the AI mimics
+/setrule <chatId> <tone>   Set a custom tone for a specific contact
+/summary                   Today's reply activity
+/status                    Current settings (away / approval / style / search)
+/approve <id>              Approve a pending draft reply
+/reject <id>               Reject a pending draft reply
+```
+
+Any plain message from the owner (no slash) is treated as a **direct chat** with the assistant.
+
+---
+
+## 🚀 Deploying
+
+1. Push all files to GitHub.
+2. Connect the repo to a Render web service.
+3. Set the environment variables above.
+4. Render runs `npm start` (`node bot.js`) automatically on deploy.
+
+---
+
+## 📝 Notes
+
+- Requires **Node.js 18+** (uses built-in `fetch`).
+- No local database — all persistence is via **Firestore**.
+- Free-tier AI providers may hit rate limits; the fallback chain handles this gracefully.
+
+---
+
+<div align="center">
+
+Built by **Muthu** · [GitHub](https://github.com/muthupriyan-dev)
+
+</div>
