@@ -98,6 +98,6 @@ Any plain message from the owner (no slash) is treated as a **direct chat** with
 
 <div align="center">
 
-Built by **Muthu** · [GitHub](https://github.com/muthupriyan-dev)
+Built by **Muthupriyan** · [GitHub](https://github.com/muthupriyan-dev)
 
 </div>
