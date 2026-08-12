@@ -95,7 +95,7 @@ Any plain message from the owner (no slash) is treated as a **direct chat** with
 - Free-tier AI providers may hit rate limits; the fallback chain handles this gracefully.
 
 ---
-##live demo 💻
+## live demo 💻
 https://t.me/muthu_helper_bot
 
 ---
